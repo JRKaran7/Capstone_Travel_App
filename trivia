@@ -6,7 +6,7 @@ import random
 def load_questions(file_path):
     return pd.read_csv(file_path).to_dict(orient='records')
 
-# Filter questions based on category
+# Filter questions by category
 def filter_questions_by_category(questions, category):
     if category == "All":
         return random.sample(questions, min(10, len(questions)))
@@ -23,49 +23,75 @@ questions = load_questions(FILE_PATH)
 categories = ["All"] + list(set(q["Category"] for q in questions))
 selected_category = st.selectbox("Which Seven Sister would you like to answer questions about?", categories)
 
+# Initialize session state variables
 if 'game_started' not in st.session_state:
     st.session_state.game_started = False
     st.session_state.questions = []
     st.session_state.current_question_index = 0
     st.session_state.score = 0
-    st.session_state.timer_duration = 20
-    st.session_state.time_left = 20
-    st.session_state.correct_index = None
+    st.session_state.selected_answer = None
+    st.session_state.answered = False
+    st.session_state.shuffled_options = {}
 
+# Start game logic
 if st.button("Start Game"):
     st.session_state.game_started = True
     st.session_state.questions = filter_questions_by_category(questions, selected_category)
     st.session_state.current_question_index = 0
     st.session_state.score = 0
-    st.session_state.time_left = st.session_state.timer_duration
-    st.session_state.correct_index = None
+    st.session_state.selected_answer = None
+    st.session_state.answered = False
+    st.session_state.shuffled_options = {}  # Reset shuffled options for new game
+    st.rerun()
 
+# Game loop
 if st.session_state.game_started:
     if st.session_state.current_question_index < len(st.session_state.questions):
         question_data = st.session_state.questions[st.session_state.current_question_index]
         st.write(f"**Question {st.session_state.current_question_index + 1}:** {question_data['Question']}")
-        
-        options = [("A", question_data['OptionA']), ("B", question_data['OptionB']),
-                   ("C", question_data['OptionC']), ("D", question_data['OptionD'])]
-        random.shuffle(options)
+
+        # Shuffle options only once per question
+        if st.session_state.current_question_index not in st.session_state.shuffled_options:
+            options = [
+                ("A", question_data['OptionA']),
+                ("B", question_data['OptionB']),
+                ("C", question_data['OptionC']),
+                ("D", question_data['OptionD'])
+            ]
+            random.shuffle(options)
+            st.session_state.shuffled_options[st.session_state.current_question_index] = options
+        else:
+            options = st.session_state.shuffled_options[st.session_state.current_question_index]
+
         correct_option = next(opt[0] for opt in options if opt[0] == question_data['Answer'])
-        
-        selected_answer = st.radio("Choose an answer:", [opt[1] for opt in options], index=None)
-        
-        if selected_answer is not None:
+
+        # Radio button for answer selection
+        selected_answer = st.radio("Choose an answer:", [opt[1] for opt in options], 
+                                   index=None, key=f"question_{st.session_state.current_question_index}")
+
+        # Evaluate answer when selected
+        if selected_answer and not st.session_state.answered:
+            st.session_state.selected_answer = selected_answer
+            st.session_state.answered = True  # Mark question as answered
+
             chosen_index = [opt[1] for opt in options].index(selected_answer)
             if options[chosen_index][0] == correct_option:
                 st.session_state.score += 1
                 st.success("Correct! 🎉")
             else:
                 st.error(f"Wrong! Correct answer: {options[[opt[0] for opt in options].index(correct_option)][1]}")
-            
+
+        # Show "Next Question" button **only after answering**
+        if st.session_state.answered:
             if st.button("Next Question"):
                 st.session_state.current_question_index += 1
-                st.experimental_rerun()
+                st.session_state.selected_answer = None  # Reset for next question
+                st.session_state.answered = False  # Reset answered flag
+                st.rerun()
+
     else:
         st.write("## Game Over!")
         st.write(f"Your final score: {st.session_state.score}/{len(st.session_state.questions)}")
         if st.button("Play Again"):
             st.session_state.game_started = False
-            st.experimental_rerun()
+            st.rerun()
